@@ -1,0 +1,36 @@
+---
+title: "Welcome My World"
+---
+
+Hello, my name is Xu Tang. I graduated with a Bachelor’s degree in Economics from the Beijing University of Posts and Telecommunications. I have experience in sales, business development, and data analysis, currently working at WowRobee Inc. in New York, where I focus on customer analysis and business strategy for delivery robots.
+
+Previously, I interned at Deloitte and CITIC Securities, gaining research and financial analysis experience. I am fluent in Chinese and English, skilled in Excel, Python, and SQL, and I enjoy tennis and video editing in my free time.
+
+
+```{r}
+#| include: false
+1+1
+```
+--------------
+Last Updated: `r format(Sys.time(), "%A %m %d, %Y at %H:%M%p")`
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+if(!require("leaflet")){
+    options(repos=c(CRAN="https://cloud.r-project.org"))
+    install.packages("leaflet")
+    stopifnot(require("leaflet"))
+}
+
+baruch_longitude <- -73.98333
+baruch_latitude  <- +40.74028
+
+leaflet() |>
+  addTiles() |>
+  setView(baruch_longitude, baruch_latitude, zoom=17) |>
+  addPopups(baruch_longitude, baruch_latitude, 
+            "I am a Master's student at <b>Baruch College</b>!")
+```
