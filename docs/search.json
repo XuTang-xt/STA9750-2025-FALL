@@ -1,0 +1,128 @@
+[
+  {
+    "objectID": "Mp01.html",
+    "href": "Mp01.html",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "",
+    "text": "This report, written entirely in English, uses Netflix’s public Top 10 weekly data to answer the assignment’s exploratory questions (Q1–Q10) and drafts three press releases: (1) Stranger Things, (2) the Indian market, and (3) a free‑topic “debut week global hit.” All computations are reproducible—just render this Quarto document in R/RStudio. The code creates a data/mp01/ folder and downloads the latest TSV files directly from Netflix.\n\nTip: Key numbers are injected via inline R code; tables are interactive via DT::datatable(); numbers are formatted with thousand separators for readability."
+  },
+  {
+    "objectID": "Mp01.html#q1.-how-many-countries-does-netflix-operate-in-as-represented-in-the-dataset",
+    "href": "Mp01.html#q1.-how-many-countries-does-netflix-operate-in-as-represented-in-the-dataset",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Q1. How many countries does Netflix operate in (as represented in the dataset)?",
+    "text": "Q1. How many countries does Netflix operate in (as represented in the dataset)?\n\n\nCode\ncountries &lt;- COUNTRY_TOP_10 |&gt;\n  distinct(country) |&gt;\n  arrange(country)\nn_countries &lt;- nrow(countries)\nn_countries\n\n\n[1] 94\n\n\nNetflix Top 10 covers 94 countries/regions."
+  },
+  {
+    "objectID": "Mp01.html#q2.-among-films-nonenglish-which-title-has-the-highest-cumulative-weeks-in-the-global-top-10",
+    "href": "Mp01.html#q2.-among-films-nonenglish-which-title-has-the-highest-cumulative-weeks-in-the-global-top-10",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Q2. Among Films (Non‑English), which title has the highest cumulative weeks in the Global Top 10?",
+    "text": "Q2. Among Films (Non‑English), which title has the highest cumulative weeks in the Global Top 10?\n\n\nCode\nq2_tbl &lt;- GLOBAL_TOP_10 |&gt;\n  filter(category == \"Films (Non-English)\") |&gt;\n  group_by(show_title) |&gt;\n  summarise(total_weeks = max(cumulative_weeks_in_top_10, na.rm = TRUE), .groups=\"drop\") |&gt;\n  arrange(desc(total_weeks)) |&gt;\n  slice_head(n = 10)\nbest_noneng_film &lt;- q2_tbl$show_title[1]\nbest_noneng_weeks &lt;- q2_tbl$total_weeks[1]\nDT::datatable(q2_tbl, options = list(searching=FALSE, info=FALSE)) |&gt;\n  DT::formatRound(\"total_weeks\", 0)\n\n\n\n\n\n\nAnswer: All Quiet on the Western Front with 23 weeks."
+  },
+  {
+    "objectID": "Mp01.html#q3.-what-is-the-longestruntime-film-minutes-that-ever-entered-the-global-top-10",
+    "href": "Mp01.html#q3.-what-is-the-longestruntime-film-minutes-that-ever-entered-the-global-top-10",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Q3. What is the longest‑runtime film (minutes) that ever entered the Global Top 10?",
+    "text": "Q3. What is the longest‑runtime film (minutes) that ever entered the Global Top 10?\n\n\nCode\nq3_tbl &lt;- GLOBAL_TOP_10 |&gt;\n  filter(str_detect(category, \"^Films\")) |&gt;\n  mutate(runtime_minutes = round(60 * runtime)) |&gt;\n  group_by(show_title) |&gt;\n  summarise(max_runtime = max(runtime_minutes, na.rm = TRUE), .groups=\"drop\") |&gt;\n  arrange(desc(max_runtime)) |&gt;\n  slice_head(n=10)\nlongest_title &lt;- q3_tbl$show_title[1]\nlongest_min   &lt;- q3_tbl$max_runtime[1]\nDT::datatable(q3_tbl, options = list(searching=FALSE, info=FALSE))\n\n\n\n\n\n\nAnswer: Pushpa 2: The Rule (Reloaded Version) (~224 minutes). (Note: early entries may have missing runtime.)"
+  },
+  {
+    "objectID": "Mp01.html#q4.-within-each-of-the-four-categories-which-title-has-the-largest-global-total-hours-viewed",
+    "href": "Mp01.html#q4.-within-each-of-the-four-categories-which-title-has-the-largest-global-total-hours-viewed",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Q4. Within each of the four categories, which title has the largest global total hours viewed?",
+    "text": "Q4. Within each of the four categories, which title has the largest global total hours viewed?\n\n\nCode\nq4_tbl &lt;- GLOBAL_TOP_10 |&gt;\n  group_by(category, show_title) |&gt;\n  summarise(total_hours = sum(weekly_hours_viewed, na.rm = TRUE), .groups=\"drop\") |&gt;\n  group_by(category) |&gt;\n  slice_max(order_by = total_hours, n = 1, with_ties = FALSE) |&gt;\n  ungroup() |&gt;\n  arrange(category)\n\nDT::datatable(q4_tbl |&gt;\n                 mutate(total_hours = scales::comma(total_hours)),\n               options = list(searching=FALSE, info=FALSE)) |&gt;\n  DT::formatStyle(\"total_hours\", target = \"row\", fontWeight = \"bold\")"
+  },
+  {
+    "objectID": "Mp01.html#q5.-which-tv-title-stayed-in-a-single-countrys-top-10-for-the-most-weeks-report-the-title-country-and-length.",
+    "href": "Mp01.html#q5.-which-tv-title-stayed-in-a-single-countrys-top-10-for-the-most-weeks-report-the-title-country-and-length.",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Q5. Which TV title stayed in a single country’s Top 10 for the most weeks? Report the title, country, and length.",
+    "text": "Q5. Which TV title stayed in a single country’s Top 10 for the most weeks? Report the title, country, and length.\n\n\nCode\nq5_tbl &lt;- COUNTRY_TOP_10 |&gt;\n  filter(str_detect(category, \"^TV\")) |&gt;\n  arrange(country, show_title, week, weekly_rank) |&gt;\n  group_by(country, show_title) |&gt;\n  summarise(weeks_in_top10 = n_distinct(week), .groups=\"drop\") |&gt;\n  arrange(desc(weeks_in_top10)) |&gt;\n  slice_head(n=15)\n\nq5_top      &lt;- q5_tbl |&gt; slice(1)\nq5_title    &lt;- q5_top$show_title\nq5_country  &lt;- q5_top$country\nq5_weeks    &lt;- q5_top$weeks_in_top10\n\nDT::datatable(q5_tbl, options = list(searching=TRUE, pageLength=10))\n\n\n\n\n\n\nAnswer: Money Heist in Pakistan for 128 weeks."
+  },
+  {
+    "objectID": "Mp01.html#q6.-identify-the-country-with-only-200-weeks-i.e.-a-short-run-in-the-dataset-and-when-its-data-ended.",
+    "href": "Mp01.html#q6.-identify-the-country-with-only-200-weeks-i.e.-a-short-run-in-the-dataset-and-when-its-data-ended.",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Q6. Identify the country with only ~200 weeks (i.e., a short run) in the dataset and when its data ended.",
+    "text": "Q6. Identify the country with only ~200 weeks (i.e., a short run) in the dataset and when its data ended.\n\n\nCode\nweeks_by_country &lt;- COUNTRY_TOP_10 |&gt;\n  group_by(country) |&gt;\n  summarise(n_weeks = n_distinct(week), last_week = max(week), .groups=\"drop\") |&gt;\n  arrange(n_weeks)\n\nrare_country &lt;- weeks_by_country |&gt; slice(1)\nDT::datatable(weeks_by_country, options = list(searching=FALSE, pageLength=10))\n\n\n\n\n\n\nAnswer: Russia, last week 2022-02-27."
+  },
+  {
+    "objectID": "Mp01.html#q7.-what-is-the-total-viewing-hours-for-squid-game-all-seasons-combined",
+    "href": "Mp01.html#q7.-what-is-the-total-viewing-hours-for-squid-game-all-seasons-combined",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Q7. What is the total viewing hours for Squid Game (all seasons combined)?",
+    "text": "Q7. What is the total viewing hours for Squid Game (all seasons combined)?\n\n\nCode\nsquid_total_hours &lt;- GLOBAL_TOP_10 |&gt;\n  filter(str_detect(show_title, regex(\"^Squid Game\", ignore_case = TRUE))) |&gt;\n  summarise(total_hours = sum(weekly_hours_viewed, na.rm = TRUE)) |&gt;\n  pull(total_hours)\n\nfmt(squid_total_hours)\n\n\n[1] \"5,310,000,000\"\n\n\nAnswer: 5,310,000,000 hours."
+  },
+  {
+    "objectID": "Mp01.html#q8.-estimate-2021-views-for-red-notice-as-total-hours-runtime.",
+    "href": "Mp01.html#q8.-estimate-2021-views-for-red-notice-as-total-hours-runtime.",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Q8. Estimate 2021 views for Red Notice as total hours / runtime.",
+    "text": "Q8. Estimate 2021 views for Red Notice as total hours / runtime.\n\n\nCode\nred_2021_views &lt;- GLOBAL_TOP_10 |&gt;\n  filter(show_title == \"Red Notice\", lubridate::year(week) == 2021) |&gt;\n  summarise(\n    total_hours_2021 = sum(weekly_hours_viewed, na.rm = TRUE),\n    runtime_hours    = mean(runtime, na.rm = TRUE) # runtime in hours\n  ) |&gt;\n  mutate(approx_views = total_hours_2021 / runtime_hours) |&gt;\n  select(total_hours_2021, runtime_hours, approx_views)\n\nred_2021_views\n\n\n\n  \n\n\n\nAnswer: Approximately NA views in 2021. (This is a rough estimate; Netflix did not provide weekly views for that period.)"
+  },
+  {
+    "objectID": "Mp01.html#q9.-in-the-united-states-how-many-films-eventually-reached-1-but-did-not-debut-at-1-also-what-was-the-most-recent-such-title",
+    "href": "Mp01.html#q9.-in-the-united-states-how-many-films-eventually-reached-1-but-did-not-debut-at-1-also-what-was-the-most-recent-such-title",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Q9. In the United States, how many films eventually reached #1 but did not debut at #1? Also, what was the most recent such title?",
+    "text": "Q9. In the United States, how many films eventually reached #1 but did not debut at #1? Also, what was the most recent such title?\n\n\nCode\nus_films &lt;- COUNTRY_TOP_10 |&gt;\n  filter(country == \"United States\", str_detect(category, \"^Films\"))\n\nus_film_runs &lt;- us_films |&gt;\n  group_by(show_title) |&gt;\n  summarise(\n    ever_number1   = any(weekly_rank == 1, na.rm = TRUE),\n    debut_rank     = weekly_rank[which.min(week)],\n    first_week     = min(week),\n    last_number1   = max(week[weekly_rank == 1], na.rm = TRUE),\n    .groups=\"drop\"\n  ) |&gt;\n  mutate(debuted_below_1 = ever_number1 & debut_rank &gt; 1)\n\ncount_not_debut1 &lt;- sum(us_film_runs$debuted_below_1, na.rm = TRUE)\nmost_recent_title &lt;- us_film_runs |&gt;\n  filter(debuted_below_1) |&gt;\n  arrange(desc(last_number1)) |&gt;\n  slice(1)\n\ncount_not_debut1\n\n\n[1] 45\n\n\nCode\nmost_recent_title\n\n\n\n  \n\n\n\nAnswer: 45 films; most recent: KPop Demon Hunters (US #1 around 2025-09-28)."
+  },
+  {
+    "objectID": "Mp01.html#q10.-which-tv-showseason-entered-the-top-10-in-the-most-countries-on-its-debut-week-report-the-count.",
+    "href": "Mp01.html#q10.-which-tv-showseason-entered-the-top-10-in-the-most-countries-on-its-debut-week-report-the-count.",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Q10. Which TV show/season entered the Top 10 in the most countries on its debut week? Report the count.",
+    "text": "Q10. Which TV show/season entered the Top 10 in the most countries on its debut week? Report the count.\n\n\nCode\ndebut_week_hits &lt;- COUNTRY_TOP_10 |&gt;\n  filter(str_detect(category, \"^TV\")) |&gt;\n  group_by(show_title) |&gt;\n  summarise(\n    debut_week = min(week),\n    .groups=\"drop\"\n  ) |&gt;\n  inner_join(\n    COUNTRY_TOP_10 |&gt; filter(str_detect(category, \"^TV\")),\n    by = \"show_title\"\n  ) |&gt;\n  filter(week == debut_week) |&gt;\n  count(show_title, name = \"countries_on_debut\") |&gt;\n  arrange(desc(countries_on_debut)) |&gt;\n  slice_head(n=15)\n\ntop_debut &lt;- debut_week_hits |&gt; slice(1)\nDT::datatable(debut_week_hits, options = list(searching=FALSE, pageLength=10))\n\n\n\n\n\n\nAnswer: Stranger Things with 236 countries on debut."
+  },
+  {
+    "objectID": "Mp01.html#pr-1-stranger-things-season-5-prelaunch",
+    "href": "Mp01.html#pr-1-stranger-things-season-5-prelaunch",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "PR #1 — Stranger Things (Season 5 pre‑launch)",
+    "text": "PR #1 — Stranger Things (Season 5 pre‑launch)\n\n\nCode\nst_global &lt;- GLOBAL_TOP_10 |&gt;\n  filter(str_detect(show_title, regex(\"^Stranger Things\", ignore_case = TRUE)),\n         str_detect(category, \"^TV\")) |&gt;\n  summarise(\n    total_hours = sum(weekly_hours_viewed, na.rm = TRUE),\n    total_weeks = max(cumulative_weeks_in_top_10, na.rm = TRUE)\n  )\n\nst_countries &lt;- COUNTRY_TOP_10 |&gt;\n  filter(str_detect(show_title, regex(\"^Stranger Things\", ignore_case = TRUE)),\n         str_detect(category, \"^TV\")) |&gt;\n  distinct(country) |&gt;\n  tally(name = \"n_countries\")\n\nst_hours &lt;- st_global$total_hours\nst_weeks &lt;- st_global$total_weeks\nst_n_cty &lt;- st_countries$n_countries\n\n\nReady for the Final Chapter: Stranger Things Builds Global Momentum Ahead of Season 5\nAcross all seasons, Stranger Things has amassed 2,967,980,000 hours of global viewing and 19 cumulative weeks in the Top 10, reaching audiences in 93 countries/regions. Compared with other English‑language TV series, it remains a top‑tier performer in both depth (hours) and longevity (weeks), signaling durable demand into the Season 5 launch window. (Source: Netflix Top 10 weekly data.)"
+  },
+  {
+    "objectID": "Mp01.html#pr-2-india-market-success-locallanguage-tilt",
+    "href": "Mp01.html#pr-2-india-market-success-locallanguage-tilt",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "PR #2 — India Market Success (Local‑language tilt)",
+    "text": "PR #2 — India Market Success (Local‑language tilt)\n\n\nCode\nin_india &lt;- COUNTRY_TOP_10 |&gt;\n  filter(country == \"India\")\n\nindia_only_hits &lt;- in_india |&gt;\n  group_by(show_title, category) |&gt;\n  summarise(\n    hours_in_india = sum(weekly_hours_viewed, na.rm = TRUE),\n    weeks_in_india = n_distinct(week),\n    .groups=\"drop\"\n  ) |&gt;\n  anti_join(\n    COUNTRY_TOP_10 |&gt;\n      filter(country == \"United States\") |&gt;\n      distinct(show_title),\n    by = \"show_title\"\n  ) |&gt;\n  arrange(desc(hours_in_india)) |&gt;\n  slice_head(n = 10)\n\nindia_yearly &lt;- in_india |&gt;\n  mutate(year = lubridate::year(week)) |&gt;\n  filter(year &gt;= 2023) |&gt;\n  group_by(year) |&gt;\n  summarise(\n    total_hours = sum(weekly_hours_viewed, na.rm = TRUE),\n    total_weeks  = n_distinct(week),\n    .groups=\"drop\"\n  )\nindia_yearly\n\n\n\n  \n\n\n\nIndia Rising: Local Favorites Propel Netflix’s Next Wave of Growth\nSince 2023, India has contributed 0 hours of Top‑10 viewing across 144 unique Top‑10 weeks. Several titles are runaway hits in India while never cracking the US Top 10 (see table below), highlighting strong local resonance and monetization potential for regional originals and dubbed catalogs. (Source: Netflix Top 10 weekly data.)\n\n\nCode\nDT::datatable(\n  india_only_hits |&gt;\n    mutate(hours_in_india = scales::comma(hours_in_india)),\n  options = list(searching=FALSE, info=FALSE, pageLength=10)\n)"
+  },
+  {
+    "objectID": "Mp01.html#pr-3-free-topic-debutweek-global-breakout",
+    "href": "Mp01.html#pr-3-free-topic-debutweek-global-breakout",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "PR #3 — Free Topic: Debut‑Week Global Breakout",
+    "text": "PR #3 — Free Topic: Debut‑Week Global Breakout\n\n\nCode\nglobal_tv &lt;- COUNTRY_TOP_10 |&gt;\n  filter(str_detect(category, \"^TV\"))\n\ndebut_blast &lt;- global_tv |&gt;\n  group_by(show_title) |&gt;\n  summarise(debut_week = min(week), .groups=\"drop\") |&gt;\n  inner_join(global_tv, by = \"show_title\") |&gt;\n  filter(week == debut_week) |&gt;\n  count(show_title, name = \"countries_on_debut\") |&gt;\n  arrange(desc(countries_on_debut)) |&gt;\n  slice_head(n = 1)\n\ndeb_title &lt;- debut_blast$show_title\ndeb_ctys  &lt;- debut_blast$countries_on_debut\n\n\nGlobal Out‑of‑the‑Gate Hit: New Series Storms the Top 10 on Debut Week\nStranger Things surged into the Top 10 across 236 countries/regions in its first week—an immediate signal of worldwide appeal. Relative to peer launches, the cross‑market breadth on debut ranks among the best, pointing to strong word‑of‑mouth and franchise potential. (Source: Netflix Top 10 weekly data.)"
+  },
+  {
+    "objectID": "Mp01.html#figure-v1-global-category-leaders-total-hours",
+    "href": "Mp01.html#figure-v1-global-category-leaders-total-hours",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Figure V1 — Global Category Leaders (Total Hours)",
+    "text": "Figure V1 — Global Category Leaders (Total Hours)\n\n\nCode\n# Reuse q4_tbl if available; otherwise recompute\nif (!exists(\"q4_tbl\")) {\n  q4_tbl &lt;- GLOBAL_TOP_10 |&gt;\n    dplyr::group_by(category, show_title) |&gt;\n    dplyr::summarise(total_hours = sum(weekly_hours_viewed, na.rm = TRUE), .groups=\"drop\") |&gt;\n    dplyr::group_by(category) |&gt;\n    dplyr::slice_max(order_by = total_hours, n = 1, with_ties = FALSE) |&gt;\n    dplyr::ungroup() |&gt;\n    dplyr::arrange(category)\n}\n\nlibrary(ggplot2)\nggplot(q4_tbl, aes(x = reorder(show_title, total_hours), y = total_hours, fill = category)) +\n  geom_col() +\n  coord_flip() +\n  scale_y_continuous(labels = scales::label_comma()) +\n  labs(x = NULL, y = \"Total Hours Viewed (Global)\",\n       title = \"Global Category Leaders by Total Hours\",\n       subtitle = \"One winner per category\") +\n  theme_minimal()"
+  },
+  {
+    "objectID": "Mp01.html#figure-v2-india-market-annual-viewing-hours-2023",
+    "href": "Mp01.html#figure-v2-india-market-annual-viewing-hours-2023",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Figure V2 — India Market: Annual Viewing Hours (2023+)",
+    "text": "Figure V2 — India Market: Annual Viewing Hours (2023+)\n\n\nCode\n# Reuse india_yearly if available; otherwise recompute\nif (!exists(\"india_yearly\")) {\n  in_india &lt;- COUNTRY_TOP_10 |&gt;\n    dplyr::filter(country == \"India\")\n  india_yearly &lt;- in_india |&gt;\n    dplyr::mutate(year = lubridate::year(week)) |&gt;\n    dplyr::filter(year &gt;= 2023) |&gt;\n    dplyr::group_by(year) |&gt;\n    dplyr::summarise(\n      total_hours = sum(weekly_hours_viewed, na.rm = TRUE),\n      total_weeks = dplyr::n_distinct(week),\n      .groups=\"drop\"\n    )\n}\nggplot(india_yearly, aes(x = year, y = total_hours, group = 1)) +\n  geom_line(size = 1) +\n  geom_point() +\n  scale_y_continuous(labels = scales::label_comma()) +\n  scale_x_continuous(breaks = unique(india_yearly$year)) +\n  labs(x = \"Year\", y = \"Total Hours Viewed (India)\",\n       title = \"India Top-10 Annual Viewing Hours\",\n       subtitle = \"Aggregated from weekly Top-10 data\") +\n  theme_minimal()"
+  },
+  {
+    "objectID": "Mp01.html#figure-v3-debut-week-reach-top-tv-launches",
+    "href": "Mp01.html#figure-v3-debut-week-reach-top-tv-launches",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Figure V3 — Debut-Week Reach: Top TV Launches",
+    "text": "Figure V3 — Debut-Week Reach: Top TV Launches\n\n\nCode\n# Reuse debut_week_hits if available; otherwise recompute top 10\nif (!exists(\"debut_week_hits\")) {\n  global_tv &lt;- COUNTRY_TOP_10 |&gt;\n    dplyr::filter(stringr::str_detect(category, \"^TV\"))\n  debut_week_hits &lt;- global_tv |&gt;\n    dplyr::group_by(show_title) |&gt;\n    dplyr::summarise(debut_week = min(week), .groups=\"drop\") |&gt;\n    dplyr::inner_join(global_tv, by = \"show_title\") |&gt;\n    dplyr::filter(week == debut_week) |&gt;\n    dplyr::count(show_title, name = \"countries_on_debut\") |&gt;\n    dplyr::arrange(dplyr::desc(countries_on_debut)) |&gt;\n    dplyr::slice_head(n = 10)\n}\nggplot(debut_week_hits, aes(x = reorder(show_title, countries_on_debut), y = countries_on_debut)) +\n  geom_col() +\n  coord_flip() +\n  labs(x = NULL, y = \"Countries on Debut Week\",\n       title = \"Top TV Launches by Debut-Week Country Reach\",\n       subtitle = \"Top 10 titles\") +\n  theme_minimal()"
+  },
+  {
+    "objectID": "Mp01.html#figure-v4-squid-game-weekly-global-viewing",
+    "href": "Mp01.html#figure-v4-squid-game-weekly-global-viewing",
+    "title": "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe",
+    "section": "Figure V4 — Squid Game: Weekly Global Viewing",
+    "text": "Figure V4 — Squid Game: Weekly Global Viewing\n\n\nCode\nsquid_weekly &lt;- GLOBAL_TOP_10 |&gt;\n  dplyr::filter(stringr::str_detect(show_title, stringr::regex(\"^Squid Game\", ignore_case = TRUE))) |&gt;\n  dplyr::group_by(week) |&gt;\n  dplyr::summarise(hours = sum(weekly_hours_viewed, na.rm = TRUE), .groups=\"drop\") |&gt;\n  dplyr::arrange(week)\n\nggplot(squid_weekly, aes(x = week, y = hours)) +\n  geom_line(linewidth = 1) +\n  scale_y_continuous(labels = scales::label_comma()) +\n  labs(x = \"Week\", y = \"Weekly Hours Viewed (Global)\",\n       title = \"Squid Game — Global Weekly Viewing\",\n       subtitle = \"Aggregated across all seasons\") +\n  theme_minimal()"
+  }
+]
