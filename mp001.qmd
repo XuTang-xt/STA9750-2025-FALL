@@ -1,0 +1,568 @@
+---
+title: "STA 9750 — Mini‑Project #01: Gourmet Cheeseburgers Across the Globe"
+author: "XU TANG"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+format:
+  html:
+    theme: flatly
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    df-print: paged
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Executive Summary
+
+This report, written entirely in English, uses Netflix’s public **Top 10 weekly** data to answer the assignment’s exploratory questions (Q1–Q10) and drafts three press releases: (1) *Stranger Things*, (2) the Indian market, and (3) a free‑topic “debut week global hit.” All computations are reproducible—just render this Quarto document in R/RStudio. The code creates a `data/mp01/` folder and downloads the latest TSV files directly from Netflix.
+
+> Tip: Key numbers are injected via inline R code; tables are interactive via `DT::datatable()`; numbers are formatted with thousand separators for readability.
+
+# Setup
+
+```{r}
+# Packages
+to_install <- c(
+  "tidyverse", "readr", "dplyr", "lubridate", "stringr",
+  "DT", "knitr", "scales", "glue"
+)
+new_pkgs <- setdiff(to_install, rownames(installed.packages()))
+if (length(new_pkgs)) install.packages(new_pkgs, quiet = TRUE)
+invisible(lapply(to_install, library, character.only = TRUE))
+
+# Helpers
+format_titles <- function(df){
+  colnames(df) <- colnames(df) |>
+    stringr::str_replace_all("_", " ") |>
+    stringr::str_to_title()
+  df
+}
+fmt <- function(x) scales::comma(x, accuracy = 1)
+```
+
+# Task 1 — Acquire Data
+
+```{r}
+# Create data dir
+if(!dir.exists(file.path("data", "mp01"))){
+  dir.create(file.path("data", "mp01"), showWarnings = FALSE, recursive = TRUE)
+}
+
+GLOBAL_TOP_10_FILENAME  <- file.path("data", "mp01", "global_top10_alltime.tsv")
+COUNTRY_TOP_10_FILENAME <- file.path("data", "mp01", "country_top10_alltime.tsv")
+
+# Download latest Netflix TuDum TSVs
+if(!file.exists(GLOBAL_TOP_10_FILENAME)){
+  download.file(
+    "https://www.netflix.com/tudum/top10/data/all-weeks-global.tsv",
+    destfile = GLOBAL_TOP_10_FILENAME, quiet = TRUE
+  )
+}
+if(!file.exists(COUNTRY_TOP_10_FILENAME)){
+  download.file(
+    "https://www.netflix.com/tudum/top10/data/all-weeks-countries.tsv",
+    destfile = COUNTRY_TOP_10_FILENAME, quiet = TRUE
+  )
+}
+
+GLOBAL_TOP_10_FILENAME; COUNTRY_TOP_10_FILENAME
+```
+
+# Task 2 — Cleaning: Replace "N/A" after read
+
+```{r}
+GLOBAL_TOP_10 <- readr::read_tsv(
+  GLOBAL_TOP_10_FILENAME,
+  show_col_types = FALSE
+)
+
+# Replace literal "N/A" with missing for season_title
+GLOBAL_TOP_10 <- GLOBAL_TOP_10 |>
+  dplyr::mutate(
+    season_title = dplyr::if_else(season_title == "N/A", NA_character_, season_title)
+  )
+
+glimpse(GLOBAL_TOP_10)
+```
+
+# Task 3 — Import with "N/A" treated as NA during read
+
+```{r}
+COUNTRY_TOP_10 <- readr::read_tsv(
+  COUNTRY_TOP_10_FILENAME,
+  na = c("N/A", "NA", ""),
+  show_col_types = FALSE
+)
+
+glimpse(COUNTRY_TOP_10)
+```
+
+```{r}
+
+# Harmonize column names that differ across dataset versions
+# - Country column might be `country` or `country_name`
+# - For safety, standardize to `country`
+normalize_country <- function(df){
+  cname <- intersect(c("country","country_name"), names(df))
+  if (length(cname) == 0) stop("Could not find a country column in the per-country dataset.")
+  dplyr::rename(df, country = !!cname[1])
+}
+
+# Some historical files used `view_count`/`views` vs `weekly_views`; we won't rename,
+# but computations below guard with `na.rm = TRUE` and mostly use hours.
+GLOBAL_TOP_10  <- GLOBAL_TOP_10
+COUNTRY_TOP_10 <- normalize_country(COUNTRY_TOP_10)
+
+
+# Standardize metric columns across possible schema variants
+standardize_metrics <- function(df){
+  # weekly_hours_viewed variants
+  if (!"weekly_hours_viewed" %in% names(df)){
+    cand <- intersect(c("hours_viewed","weekly_viewing_hours","weekly_hours","view_hours","hours"), names(df))
+    if (length(cand) > 0){
+      df <- dplyr::mutate(df, weekly_hours_viewed = !!rlang::sym(cand[1]))
+    } else {
+      df <- dplyr::mutate(df, weekly_hours_viewed = NA_real_)
+    }
+  }
+  # weekly_views variants (not required everywhere, but helpful)
+  if (!"weekly_views" %in% names(df)){
+    candv <- intersect(c("views","view_count","weekly_view_count"), names(df))
+    if (length(candv) > 0){
+      df <- dplyr::mutate(df, weekly_views = !!rlang::sym(candv[1]))
+    } else {
+      df <- dplyr::mutate(df, weekly_views = NA_real_)
+    }
+  }
+  # weekly_rank variants
+  if (!"weekly_rank" %in% names(df)){
+    candr <- intersect(c("rank","top10_rank","weekly_top10_rank"), names(df))
+    if (length(candr) > 0){
+      df <- dplyr::mutate(df, weekly_rank = !!rlang::sym(candr[1]))
+    } else {
+      df <- dplyr::mutate(df, weekly_rank = NA_integer_)
+    }
+  }
+  # season_title NA normalization (some files use literal "N/A")
+  if ("season_title" %in% names(df)){
+    df <- dplyr::mutate(df, season_title = dplyr::na_if(season_title, "N/A"))
+  }
+  df
+}
+
+GLOBAL_TOP_10  <- standardize_metrics(GLOBAL_TOP_10)
+COUNTRY_TOP_10 <- standardize_metrics(COUNTRY_TOP_10)
+
+
+```
+
+# Initial Data Peek
+
+```{r}
+library(DT)
+
+GLOBAL_TOP_10 |>
+  head(20) |>
+  format_titles() |>
+  DT::datatable(options = list(searching = FALSE, info = FALSE)) |>
+  DT::formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
+```
+
+```{r}
+GLOBAL_TOP_10 |>
+  mutate(runtime_minutes = round(60 * runtime)) |>
+  select(-season_title, -runtime) |>
+  format_titles() |>
+  head(20) |>
+  DT::datatable(options = list(searching = FALSE, info = FALSE)) |>
+  DT::formatRound(c('Weekly Hours Viewed', 'Weekly Views'))
+```
+
+# EDA Questions (Q1–Q10)
+
+> Each question is answered with tidyverse code; single values are inserted inline; multi‑row results are displayed as interactive tables.
+
+## Q1. How many countries does Netflix operate in (as represented in the dataset)?
+
+```{r}
+countries <- COUNTRY_TOP_10 |>
+  distinct(country) |>
+  arrange(country)
+n_countries <- nrow(countries)
+n_countries
+```
+Netflix Top 10 covers **`r n_countries`** countries/regions.
+
+## Q2. Among **Films (Non‑English)**, which title has the **highest cumulative weeks** in the Global Top 10?
+
+```{r}
+q2_tbl <- GLOBAL_TOP_10 |>
+  filter(category == "Films (Non-English)") |>
+  group_by(show_title) |>
+  summarise(total_weeks = max(cumulative_weeks_in_top_10, na.rm = TRUE), .groups="drop") |>
+  arrange(desc(total_weeks)) |>
+  slice_head(n = 10)
+best_noneng_film <- q2_tbl$show_title[1]
+best_noneng_weeks <- q2_tbl$total_weeks[1]
+DT::datatable(q2_tbl, options = list(searching=FALSE, info=FALSE)) |>
+  DT::formatRound("total_weeks", 0)
+```
+**Answer:** **`r best_noneng_film`** with **`r best_noneng_weeks`** weeks.
+
+## Q3. What is the **longest‑runtime film (minutes)** that ever entered the Global Top 10?
+
+```{r}
+q3_tbl <- GLOBAL_TOP_10 |>
+  filter(str_detect(category, "^Films")) |>
+  mutate(runtime_minutes = round(60 * runtime)) |>
+  group_by(show_title) |>
+  summarise(max_runtime = max(runtime_minutes, na.rm = TRUE), .groups="drop") |>
+  arrange(desc(max_runtime)) |>
+  slice_head(n=10)
+longest_title <- q3_tbl$show_title[1]
+longest_min   <- q3_tbl$max_runtime[1]
+DT::datatable(q3_tbl, options = list(searching=FALSE, info=FALSE))
+```
+**Answer:** **`r longest_title`** (~**`r longest_min`** minutes). *(Note: early entries may have missing runtime.)*
+
+## Q4. Within each of the four **categories**, which title has the **largest global total hours viewed**?
+
+```{r}
+q4_tbl <- GLOBAL_TOP_10 |>
+  group_by(category, show_title) |>
+  summarise(total_hours = sum(weekly_hours_viewed, na.rm = TRUE), .groups="drop") |>
+  group_by(category) |>
+  slice_max(order_by = total_hours, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  arrange(category)
+
+DT::datatable(q4_tbl |>
+                 mutate(total_hours = scales::comma(total_hours)),
+               options = list(searching=FALSE, info=FALSE)) |>
+  DT::formatStyle("total_hours", target = "row", fontWeight = "bold")
+```
+
+## Q5. Which **TV title** stayed in a **single country’s** Top 10 for the **most weeks**? Report the title, country, and length.
+
+```{r}
+q5_tbl <- COUNTRY_TOP_10 |>
+  filter(str_detect(category, "^TV")) |>
+  arrange(country, show_title, week, weekly_rank) |>
+  group_by(country, show_title) |>
+  summarise(weeks_in_top10 = n_distinct(week), .groups="drop") |>
+  arrange(desc(weeks_in_top10)) |>
+  slice_head(n=15)
+
+q5_top      <- q5_tbl |> slice(1)
+q5_title    <- q5_top$show_title
+q5_country  <- q5_top$country
+q5_weeks    <- q5_top$weeks_in_top10
+
+DT::datatable(q5_tbl, options = list(searching=TRUE, pageLength=10))
+```
+**Answer:** **`r q5_title`** in **`r q5_country`** for **`r q5_weeks`** weeks.
+
+## Q6. Identify the country with **only ~200 weeks** (i.e., a short run) in the dataset and when its data ended.
+
+```{r}
+weeks_by_country <- COUNTRY_TOP_10 |>
+  group_by(country) |>
+  summarise(n_weeks = n_distinct(week), last_week = max(week), .groups="drop") |>
+  arrange(n_weeks)
+
+rare_country <- weeks_by_country |> slice(1)
+DT::datatable(weeks_by_country, options = list(searching=FALSE, pageLength=10))
+```
+**Answer:** **`r rare_country$country`**, last week **`r rare_country$last_week`**.
+
+## Q7. What is the **total viewing hours** for **Squid Game** (all seasons combined)?
+
+```{r}
+squid_total_hours <- GLOBAL_TOP_10 |>
+  filter(str_detect(show_title, regex("^Squid Game", ignore_case = TRUE))) |>
+  summarise(total_hours = sum(weekly_hours_viewed, na.rm = TRUE)) |>
+  pull(total_hours)
+
+fmt(squid_total_hours)
+```
+**Answer:** **`r fmt(squid_total_hours)`** hours.
+
+## Q8. Estimate **2021 views** for **Red Notice** as **total hours / runtime**.
+
+```{r}
+red_2021_views <- GLOBAL_TOP_10 |>
+  filter(show_title == "Red Notice", lubridate::year(week) == 2021) |>
+  summarise(
+    total_hours_2021 = sum(weekly_hours_viewed, na.rm = TRUE),
+    runtime_hours    = mean(runtime, na.rm = TRUE) # runtime in hours
+  ) |>
+  mutate(approx_views = total_hours_2021 / runtime_hours) |>
+  select(total_hours_2021, runtime_hours, approx_views)
+
+red_2021_views
+```
+**Answer:** Approximately **`r fmt(round(red_2021_views$approx_views))`** views in 2021. *(This is a rough estimate; Netflix did not provide weekly views for that period.)*
+
+## Q9. In the **United States**, how many **films** eventually reached **#1** but **did not debut** at #1? Also, what was the **most recent** such title?
+
+```{r}
+us_films <- COUNTRY_TOP_10 |>
+  filter(country == "United States", str_detect(category, "^Films"))
+
+us_film_runs <- us_films |>
+  group_by(show_title) |>
+  summarise(
+    ever_number1   = any(weekly_rank == 1, na.rm = TRUE),
+    debut_rank     = weekly_rank[which.min(week)],
+    first_week     = min(week),
+    last_number1   = max(week[weekly_rank == 1], na.rm = TRUE),
+    .groups="drop"
+  ) |>
+  mutate(debuted_below_1 = ever_number1 & debut_rank > 1)
+
+count_not_debut1 <- sum(us_film_runs$debuted_below_1, na.rm = TRUE)
+most_recent_title <- us_film_runs |>
+  filter(debuted_below_1) |>
+  arrange(desc(last_number1)) |>
+  slice(1)
+
+count_not_debut1
+most_recent_title
+```
+**Answer:** **`r count_not_debut1`** films; most recent: **`r most_recent_title$show_title`** (US #1 around **`r most_recent_title$last_number1`**).
+
+## Q10. Which **TV show/season** entered the **Top 10 in the most countries on its debut week**? Report the count.
+
+```{r}
+debut_week_hits <- COUNTRY_TOP_10 |>
+  filter(str_detect(category, "^TV")) |>
+  group_by(show_title) |>
+  summarise(
+    debut_week = min(week),
+    .groups="drop"
+  ) |>
+  inner_join(
+    COUNTRY_TOP_10 |> filter(str_detect(category, "^TV")),
+    by = "show_title"
+  ) |>
+  filter(week == debut_week) |>
+  count(show_title, name = "countries_on_debut") |>
+  arrange(desc(countries_on_debut)) |>
+  slice_head(n=15)
+
+top_debut <- debut_week_hits |> slice(1)
+DT::datatable(debut_week_hits, options = list(searching=FALSE, pageLength=10))
+```
+**Answer:** **`r top_debut$show_title`** with **`r top_debut$countries_on_debut`** countries on debut.
+
+# Press Releases
+
+
+## PR #1 — *Stranger Things* (Season 5 pre‑launch)
+
+```{r}
+st_global <- GLOBAL_TOP_10 |>
+  filter(str_detect(show_title, regex("^Stranger Things", ignore_case = TRUE)),
+         str_detect(category, "^TV")) |>
+  summarise(
+    total_hours = sum(weekly_hours_viewed, na.rm = TRUE),
+    total_weeks = max(cumulative_weeks_in_top_10, na.rm = TRUE)
+  )
+
+st_countries <- COUNTRY_TOP_10 |>
+  filter(str_detect(show_title, regex("^Stranger Things", ignore_case = TRUE)),
+         str_detect(category, "^TV")) |>
+  distinct(country) |>
+  tally(name = "n_countries")
+
+st_hours <- st_global$total_hours
+st_weeks <- st_global$total_weeks
+st_n_cty <- st_countries$n_countries
+```
+
+ 
+**Ready for the Final Chapter: *Stranger Things* Builds Global Momentum Ahead of Season 5**
+
+ 
+Across all seasons, *Stranger Things* has amassed **`r fmt(st_hours)`** hours of global viewing and **`r fmt(st_weeks)`** cumulative weeks in the Top 10, reaching audiences in **`r st_n_cty`** countries/regions. Compared with other English‑language TV series, it remains a top‑tier performer in both depth (hours) and longevity (weeks), signaling durable demand into the Season 5 launch window. (Source: Netflix Top 10 weekly data.)
+
+
+## PR #2 — India Market Success (Local‑language tilt)
+
+```{r}
+in_india <- COUNTRY_TOP_10 |>
+  filter(country == "India")
+
+india_only_hits <- in_india |>
+  group_by(show_title, category) |>
+  summarise(
+    hours_in_india = sum(weekly_hours_viewed, na.rm = TRUE),
+    weeks_in_india = n_distinct(week),
+    .groups="drop"
+  ) |>
+  anti_join(
+    COUNTRY_TOP_10 |>
+      filter(country == "United States") |>
+      distinct(show_title),
+    by = "show_title"
+  ) |>
+  arrange(desc(hours_in_india)) |>
+  slice_head(n = 10)
+
+india_yearly <- in_india |>
+  mutate(year = lubridate::year(week)) |>
+  filter(year >= 2023) |>
+  group_by(year) |>
+  summarise(
+    total_hours = sum(weekly_hours_viewed, na.rm = TRUE),
+    total_weeks  = n_distinct(week),
+    .groups="drop"
+  )
+india_yearly
+```
+
+ 
+**India Rising: Local Favorites Propel Netflix’s Next Wave of Growth**
+
+
+Since **2023**, India has contributed **`r fmt(sum(india_yearly$total_hours))`** hours of Top‑10 viewing across **`r sum(india_yearly$total_weeks)`** unique Top‑10 weeks. Several titles are runaway hits in India while never cracking the US Top 10 (see table below), highlighting strong local resonance and monetization potential for regional originals and dubbed catalogs. (Source: Netflix Top 10 weekly data.)
+
+```{r}
+DT::datatable(
+  india_only_hits |>
+    mutate(hours_in_india = scales::comma(hours_in_india)),
+  options = list(searching=FALSE, info=FALSE, pageLength=10)
+)
+```
+
+## PR #3 — Free Topic: Debut‑Week Global Breakout
+
+```{r}
+global_tv <- COUNTRY_TOP_10 |>
+  filter(str_detect(category, "^TV"))
+
+debut_blast <- global_tv |>
+  group_by(show_title) |>
+  summarise(debut_week = min(week), .groups="drop") |>
+  inner_join(global_tv, by = "show_title") |>
+  filter(week == debut_week) |>
+  count(show_title, name = "countries_on_debut") |>
+  arrange(desc(countries_on_debut)) |>
+  slice_head(n = 1)
+
+deb_title <- debut_blast$show_title
+deb_ctys  <- debut_blast$countries_on_debut
+```
+
+
+**Global Out‑of‑the‑Gate Hit: New Series Storms the Top 10 on Debut Week**
+
+
+**`r deb_title`** surged into the Top 10 across **`r deb_ctys`** countries/regions in its first week—an immediate signal of worldwide appeal. Relative to peer launches, the cross‑market breadth on debut ranks among the best, pointing to strong word‑of‑mouth and franchise potential. (Source: Netflix Top 10 weekly data.)
+
+
+
+
+
+# Visual Appendix: Key Charts & Images
+
+This section adds several quick visuals to strengthen the storytelling. All charts are generated directly from the same cleaned data used above—no manual steps needed.
+
+## Figure V1 — Global Category Leaders (Total Hours)
+
+```{r}
+# Reuse q4_tbl if available; otherwise recompute
+if (!exists("q4_tbl")) {
+  q4_tbl <- GLOBAL_TOP_10 |>
+    dplyr::group_by(category, show_title) |>
+    dplyr::summarise(total_hours = sum(weekly_hours_viewed, na.rm = TRUE), .groups="drop") |>
+    dplyr::group_by(category) |>
+    dplyr::slice_max(order_by = total_hours, n = 1, with_ties = FALSE) |>
+    dplyr::ungroup() |>
+    dplyr::arrange(category)
+}
+
+library(ggplot2)
+ggplot(q4_tbl, aes(x = reorder(show_title, total_hours), y = total_hours, fill = category)) +
+  geom_col() +
+  coord_flip() +
+  scale_y_continuous(labels = scales::label_comma()) +
+  labs(x = NULL, y = "Total Hours Viewed (Global)",
+       title = "Global Category Leaders by Total Hours",
+       subtitle = "One winner per category") +
+  theme_minimal()
+```
+
+## Figure V2 — India Market: Annual Viewing Hours (2023+)
+
+```{r}
+# Reuse india_yearly if available; otherwise recompute
+if (!exists("india_yearly")) {
+  in_india <- COUNTRY_TOP_10 |>
+    dplyr::filter(country == "India")
+  india_yearly <- in_india |>
+    dplyr::mutate(year = lubridate::year(week)) |>
+    dplyr::filter(year >= 2023) |>
+    dplyr::group_by(year) |>
+    dplyr::summarise(
+      total_hours = sum(weekly_hours_viewed, na.rm = TRUE),
+      total_weeks = dplyr::n_distinct(week),
+      .groups="drop"
+    )
+}
+ggplot(india_yearly, aes(x = year, y = total_hours, group = 1)) +
+  geom_line(size = 1) +
+  geom_point() +
+  scale_y_continuous(labels = scales::label_comma()) +
+  scale_x_continuous(breaks = unique(india_yearly$year)) +
+  labs(x = "Year", y = "Total Hours Viewed (India)",
+       title = "India Top-10 Annual Viewing Hours",
+       subtitle = "Aggregated from weekly Top-10 data") +
+  theme_minimal()
+```
+
+## Figure V3 — Debut-Week Reach: Top TV Launches
+
+```{r}
+# Reuse debut_week_hits if available; otherwise recompute top 10
+if (!exists("debut_week_hits")) {
+  global_tv <- COUNTRY_TOP_10 |>
+    dplyr::filter(stringr::str_detect(category, "^TV"))
+  debut_week_hits <- global_tv |>
+    dplyr::group_by(show_title) |>
+    dplyr::summarise(debut_week = min(week), .groups="drop") |>
+    dplyr::inner_join(global_tv, by = "show_title") |>
+    dplyr::filter(week == debut_week) |>
+    dplyr::count(show_title, name = "countries_on_debut") |>
+    dplyr::arrange(dplyr::desc(countries_on_debut)) |>
+    dplyr::slice_head(n = 10)
+}
+ggplot(debut_week_hits, aes(x = reorder(show_title, countries_on_debut), y = countries_on_debut)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = NULL, y = "Countries on Debut Week",
+       title = "Top TV Launches by Debut-Week Country Reach",
+       subtitle = "Top 10 titles") +
+  theme_minimal()
+```
+
+## Figure V4 — *Squid Game*: Weekly Global Viewing
+
+```{r}
+squid_weekly <- GLOBAL_TOP_10 |>
+  dplyr::filter(stringr::str_detect(show_title, stringr::regex("^Squid Game", ignore_case = TRUE))) |>
+  dplyr::group_by(week) |>
+  dplyr::summarise(hours = sum(weekly_hours_viewed, na.rm = TRUE), .groups="drop") |>
+  dplyr::arrange(week)
+
+ggplot(squid_weekly, aes(x = week, y = hours)) +
+  geom_line(linewidth = 1) +
+  scale_y_continuous(labels = scales::label_comma()) +
+  labs(x = "Week", y = "Weekly Hours Viewed (Global)",
+       title = "Squid Game — Global Weekly Viewing",
+       subtitle = "Aggregated across all seasons") +
+  theme_minimal()
+```
