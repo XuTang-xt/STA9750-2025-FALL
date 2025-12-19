@@ -1,0 +1,256 @@
+---
+title: "SQ: Which Borough Reports the Highest Crime Rate When Adjusted for Ridership"
+format: html
+editor: visual
+---
+
+## SQ: Which borough reports the highest crime rate when adjusted for ridership?
+
+To understand whether there is a correlation between MTA crimes and the boroughs where they occur, it is essential to adjust for ridership levels. This allows us to identify not just where crimes are most frequent, but where they are most likely relative to passenger volume.
+
+**Data Limitation**: Available ridership data only provides system-level totals, not borough-level breakdowns. Therefore, the "adjusted" crime rate represents each borough's contribution to the overall system crime rate, calculated as: Crime Rate = (Borough Crimes / System Ridership) × 1,000,000.
+
+### Load Libraries
+
+```{r}
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(lubridate)
+```
+
+### Load Data
+
+```{r}
+#| message: false
+#| warning: false
+
+complaint_df <- read_csv("data/courseproject/nypd_complaint_historic.csv")
+monthly_ridership_df <- read_csv("data/courseproject/montly_ridership.csv")
+```
+
+### Filter Transit-Related Crimes
+
+```{r}
+transit_df <- complaint_df %>%
+  filter(juris_desc == "N.Y. TRANSIT POLICE" | prem_typ_desc == "TRANSIT - NYC SUBWAY") %>%
+  mutate(date = as.Date(cmplnt_fr_dt)) %>%
+  filter(date >= as.Date("2018-01-01"), date <= as.Date("2024-12-31")) %>%
+  filter(boro_nm %in% c("MANHATTAN", "BROOKLYN", "BRONX", "QUEENS")) %>%
+  distinct(cmplnt_num, .keep_all = TRUE)
+
+print(paste("Total transit crimes (2018-2024):", nrow(transit_df)))
+```
+
+### Prepare Subway Ridership Data
+
+```{r}
+subway_ridership <- monthly_ridership_df %>%
+  filter(agency == "Subway") %>%
+  mutate(month = as.Date(month)) %>%
+  filter(month >= as.Date("2018-01-01"), month <= as.Date("2024-12-31"))
+
+print(paste("Ridership months:", nrow(subway_ridership)))
+print(paste("Date range:", min(subway_ridership$month), "to", max(subway_ridership$month)))
+```
+
+### Raw Crime Counts by Borough
+
+```{r}
+borough_crime_counts <- transit_df %>%
+  group_by(boro_nm) %>%
+  summarise(crime_count = n()) %>%
+  arrange(desc(crime_count))
+
+print(borough_crime_counts)
+```
+
+### Calculate System-Level Monthly Crime Rate
+
+```{r}
+transit_monthly <- transit_df %>%
+  mutate(month = floor_date(date, "month")) %>%
+  group_by(month) %>%
+  summarise(crime_count = n())
+
+merged_df <- transit_monthly %>%
+  inner_join(subway_ridership, by = "month") %>%
+  mutate(crime_rate_per_million = (crime_count / ridership) * 1000000)
+```
+
+### Calculate Borough-Level Crime Rate (Using System Ridership)
+
+```{r}
+borough_monthly <- transit_df %>%
+  mutate(month = floor_date(date, "month")) %>%
+  group_by(month, boro_nm) %>%
+  summarise(crime_count = n(), .groups = "drop")
+
+borough_with_ridership <- borough_monthly %>%
+  inner_join(subway_ridership, by = "month") %>%
+  mutate(crime_rate_per_million = (crime_count / ridership) * 1000000)
+
+borough_avg_rate <- borough_with_ridership %>%
+  group_by(boro_nm) %>%
+  summarise(
+    total_crimes = sum(crime_count),
+    avg_monthly_crimes = mean(crime_count),
+    avg_crime_rate_per_million = mean(crime_rate_per_million)
+  ) %>%
+  arrange(desc(avg_crime_rate_per_million))
+
+print(borough_avg_rate)
+```
+
+### Visualization 1: Total Transit Crimes by Borough
+
+```{r}
+ggplot(borough_crime_counts, aes(x = reorder(boro_nm, crime_count), y = crime_count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Total Transit Crimes by Borough (2018-2024)",
+    x = "Borough",
+    y = "Number of Transit Crimes"
+  ) +
+  theme_minimal() +
+  geom_text(aes(label = format(crime_count, big.mark = ",")), hjust = -0.1, size = 3)
+
+print("Bar Chart Data:")
+print(borough_crime_counts)
+```
+
+### Visualization 2: System-Level Crime Rate Over Time
+
+```{r}
+ggplot(merged_df, aes(x = month, y = crime_rate_per_million)) +
+  geom_line(color = "darkred", linewidth = 0.8) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue", linetype = "dashed") +
+  labs(
+    title = "System-Level Transit Crime Rate (2018-2024)",
+    x = "Month",
+    y = "Crimes per Million Riders"
+  ) +
+  theme_minimal()
+
+rate_summary <- merged_df %>%
+  summarise(
+    min_rate = min(crime_rate_per_million),
+    max_rate = max(crime_rate_per_million),
+    mean_rate = mean(crime_rate_per_million),
+    median_rate = median(crime_rate_per_million)
+  )
+print("Crime Rate Summary:")
+print(rate_summary)
+```
+
+### Visualization 3: Average Crime Rate by Borough
+
+```{r}
+ggplot(borough_avg_rate, aes(x = reorder(boro_nm, avg_crime_rate_per_million), y = avg_crime_rate_per_million)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  coord_flip() +
+  labs(
+    title = "Average Monthly Crime Rate by Borough (2018-2024)",
+    subtitle = "Crimes per Million System Riders",
+    x = "Borough",
+    y = "Crime Rate per Million Riders"
+  ) +
+  theme_minimal() +
+  geom_text(aes(label = round(avg_crime_rate_per_million, 2)), hjust = -0.1, size = 3)
+
+print("Average Crime Rate by Borough:")
+print(borough_avg_rate %>% select(boro_nm, avg_crime_rate_per_million))
+```
+
+### Visualization 4: Heatmap of Borough Crime Rate by Year
+
+```{r}
+borough_yearly <- transit_df %>%
+  mutate(year = year(date)) %>%
+  group_by(year, boro_nm) %>%
+  summarise(crime_count = n(), .groups = "drop")
+
+yearly_ridership <- subway_ridership %>%
+  mutate(year = year(month)) %>%
+  group_by(year) %>%
+  summarise(total_ridership = sum(ridership))
+
+borough_yearly_rate <- borough_yearly %>%
+  inner_join(yearly_ridership, by = "year") %>%
+  mutate(crime_rate_per_million = (crime_count / total_ridership) * 1000000)
+
+ggplot(borough_yearly_rate, aes(x = factor(year), y = boro_nm, fill = crime_rate_per_million)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "lightyellow", high = "darkred") +
+  labs(
+    title = "Borough Crime Rate by Year (2018-2024)",
+    x = "Year",
+    y = "Borough",
+    fill = "Crimes per\nMillion Riders"
+  ) +
+  theme_minimal() +
+  geom_text(aes(label = round(crime_rate_per_million, 1)), size = 3)
+
+print("Heatmap Data:")
+borough_yearly_wide <- borough_yearly_rate %>%
+  select(year, boro_nm, crime_rate_per_million) %>%
+  pivot_wider(names_from = year, values_from = crime_rate_per_million)
+print(borough_yearly_wide)
+```
+
+### Summary Statistics
+
+```{r}
+print("Borough with highest raw crime count:")
+print(borough_crime_counts %>% slice(1))
+
+print("Borough with highest average crime rate (per million system riders):")
+print(borough_avg_rate %>% slice(1) %>% select(boro_nm, avg_crime_rate_per_million))
+
+print("Year with highest system-wide crime rate:")
+yearly_system_rate <- merged_df %>%
+  mutate(year = year(month)) %>%
+  group_by(year) %>%
+  summarise(avg_rate = mean(crime_rate_per_million)) %>%
+  arrange(desc(avg_rate))
+print(yearly_system_rate)
+```
+
+## Summary report
+
+### Introduction
+
+Public safety within mass transit systems is a persistent concern for large metropolitan areas, particularly in a city as dense and complex as New York City. Headlines and public discourse frequently focus on raw crime counts when discussing safety in the subway system. However, raw counts alone can be misleading, as they fail to account for the number of passengers exposed to risk. A borough with higher ridership will almost inevitably report more incidents simply because more people pass through its transit system.
+
+The purpose of this analysis is to move beyond surface-level comparisons and evaluate which borough reports the highest transit crime rate when adjusted for ridership. By reframing crime not as a raw total but as a rate relative to passenger volume, this study aims to provide a more meaningful and equitable comparison across boroughs.
+
+### Research Question and Motivation
+
+The central research question guiding this project is: Which New York City borough reports the highest transit crime rate when adjusted for ridership? This question is motivated by the recognition that transit usage is unevenly distributed across boroughs. Manhattan, as the central transit hub, naturally records higher raw crime counts. Adjusting for ridership allows for a fairer assessment of relative risk.
+
+### Data Sources and Scope
+
+This study uses NYPD historic complaint data and monthly MTA subway ridership data from 2018 through 2024. Transit-related crimes were identified using NY Transit Police jurisdiction and subway premises codes. After filtering and cleaning, the final dataset included 92,861 transit crime incidents across Manhattan, Brooklyn, the Bronx, and Queens.
+
+### Methodology
+
+Because borough-level ridership data is unavailable, crime rates were adjusted using system-wide ridership. The adjusted crime rate was calculated as crimes per million system riders. While imperfect, this approach provides consistent relative comparisons across boroughs.
+
+### Results
+
+Manhattan reported the highest number of transit crimes (39,153) and also the highest adjusted crime rate at 5.29 crimes per million riders. Brooklyn followed with 3.50, the Bronx with 2.22, and Queens with 1.49. These findings indicate that Manhattan’s higher crime burden cannot be explained by ridership volume alone.
+
+### Discussion
+
+Temporal analysis shows sharp increases in crime rates during 2020 and again in 2024. While the 2020 spike reflects pandemic-driven ridership collapse, the sustained increase in later years suggests structural challenges. Manhattan’s role as an economic and transportation hub likely contributes to its consistently higher adjusted crime rate.
+
+### Limitations
+
+The primary limitation of this study is the lack of borough-level ridership data. Using system-level ridership assumes equal distribution of riders, which is unrealistic. Additionally, reported crime data may underrepresent true incident counts.
+
+### Conclusion
+
+Adjusting transit crime for ridership provides a more accurate comparison across boroughs. The analysis shows that Manhattan consistently reports the highest adjusted transit crime rate from 2018 to 2024. This project highlights the importance of normalization and transparent methodology in public safety analysis.\
+\
